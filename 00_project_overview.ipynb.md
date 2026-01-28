@@ -1,355 +1,250 @@
-{
- "cells": [
-  {
-   "cell_type": "markdown",
-   "id": "84db3348-c9b7-4a90-b059-8502c360ee8a",
-   "metadata": {},
-   "source": [
-    "### Elasticidad Precio–Demanda y Optimización de Margen (M5 Forecasting / Walmart)\n",
-    "Resumen del proyecto\n",
-    "\n",
-    "Este proyecto desarrolla un flujo práctico de estrategia de precios usando el dataset M5 Forecasting (Walmart): estimamos elasticidad precio–demanda y, con esas elasticidades, \n",
-    "simulamos escenarios de precio para recomendar ajustes que maximicen profit por categoría y mercado.\n",
-    "\n",
-    "Idea central: la granularidad importa. A nivel SKU–tienda la elasticidad suele ser ruidosa e inestable; al agregar y hacer pooling se obtienen resultados más accionables."
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "id": "3cf4be2f-16b4-4495-a46b-8b16575c124f",
-   "metadata": {},
-   "source": [
-    "### Problema de negocio\n",
-    "\n",
-    "Un equipo de pricing quiere responder:\n",
-    "\n",
-    "1.-¿Qué tan sensible es la demanda a cambios de precio? (Elasticidad)\n",
-    "\n",
-    "2.-¿Conviene subir o bajar precios para maximizar profit?\n",
-    "\n",
-    "3.-¿La recomendación cambia por mercado y categoría?\n",
-    "\n",
-    "4.-¿El pricing puede “arreglar” un problema de rentabilidad o hay temas estructurales (costos/mix)?\n",
-    "\n",
-    "Entregables del proyecto:\n",
-    "\n",
-    "    -Elasticidades con inferencia estadística\n",
-    "    -Simulación de unidades, revenue y profit por cambios de precio\n",
-    "    -Recomendación accionable “subir / bajar / mantener” por segmento"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "id": "2f8425c4-f75b-4e37-b24d-6fa75f4b0b27",
-   "metadata": {},
-   "source": [
-    "### Dataset\n",
-    "\n",
-    "Fuente: Kaggle_ M5 Forecasting dataset (Walmart).\n",
-    "Archivos principales:\n",
-    "\n",
-    "    -sales_train_* (ventas diarias por item/tienda)\n",
-    "    -sell_prices.csv (precios semanales por item/tienda/semana)\n",
-    "    -calendar.csv (mapea d_# a fecha y wm_yr_wk)\n",
-    "\n",
-    "Enfoque multi-mercado: los stores/states se mapean a tres países (US/MX/ES) para simular un contexto de estrategia de precios internacional sin perder realismo."
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "id": "eb69eba6-95e9-41a1-80d8-719b0abbadb0",
-   "metadata": {},
-   "source": [
-    "### Estructura del repositorio / notebooks\n",
-    "\n",
-    "01_data_loading_and_cleaning.ipynb\n",
-    "\n",
-    "-Carga, validación de tipos, joins con calendario y precios, y creación de tablas limpias cuidando performance.\n",
-    "\n",
-    "02_eda_sales_and_prices.ipynb\n",
-    "\n",
-    "-EDA de ventas y precios; comparación por país; validación de cobertura de precios.\n",
-    "\n",
-    "03_price_elasticity_model.ipynb\n",
-    "\n",
-    "-Modelo log-log (OLS), filtros de calidad, agregación semanal, pooling por segmento y errores robustos.\n",
-    "\n",
-    "04_margin_optimization.ipynb\n",
-    "\n",
-    "-Costos unitarios fijos por dept, baseline de profit, simulación de escenarios y tabla ejecutiva de recomendaciones."
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "id": "9ff15f1d-8a6d-4312-b4ef-f536f340ab3d",
-   "metadata": {},
-   "source": [
-    "### Metodología\n",
-    "1) Preparación de datos (Notebook 01)\n",
-    "\n",
-    "Se construye una tabla modelable con:\n",
-    "\n",
-    "    -item_id, store_id, dept_id, country\n",
-    "    -date, wm_yr_wk\n",
-    "    -units_sold\n",
-    "    -sell_price\n",
-    "\n",
-    "Nota de performance: evitamos “melt” masivo (muy pesado en laptop) cuando no es necesario, para prevenir crashes del kernel.\n",
-    "\n",
-    "2) Exploración (Notebook 02)\n",
-    "\n",
-    "Validamos:\n",
-    "\n",
-    "    -cobertura de precios por semanas y mercados\n",
-    "    -distribución de precios por país\n",
-    "    -consistencia de joins sales ↔ calendar ↔ prices\n",
-    "    -señales para justificar agregación semanal\n",
-    "\n",
-    "Resultado: el EDA motiva pasar de diario a semanal para estabilizar el modelado.\n",
-    "\n",
-    "3) Elasticidad (Notebook 03)\n",
-    "\n",
-    "Se intenta a nivel SKU–tienda y se observa inestabilidad; se pivotea a modelos agregados.\n",
-    "\n",
-    "Aprendizaje clave: a nivel SKU–tienda suele haber:\n",
-    "\n",
-    "    -ruido alto\n",
-    "    -poca variación de precio\n",
-    "    -efectos no observados (promos/estacionalidad)\n",
-    "\n",
-    "4) Optimización de margen (Notebook 04)\n",
-    "\n",
-    "Con elasticidades estimadas:\n",
-    "\n",
-    "    -simulamos cambios de precio\n",
-    "    -calculamos unidades, revenue, profit esperados\n",
-    "    -elegimos el precio que maximiza profit por segmento"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "id": "bd7f8442-3b1c-484c-a16f-ad150d46cc6f",
-   "metadata": {},
-   "source": [
-    "### Modelos matemáticos \n",
-    "A) Elasticidad log-log (OLS)\n",
-    "\n",
-    "Modelo estándar de elasticidad constante:\n",
-    "\n",
-    "`log(Q) = β₀ + β₁ log(P) + β₂ t + ε`\n",
-    "\n",
-    "\n",
-    "    -Q: unidades vendidas\n",
-    "    -P: precio\n",
-    "    -𝑡:tendencia temporal (índice semanal)\n",
-    "    -β1 : elasticidad precio–demanda\n",
-    "\n",
-    "        -Ejemplo: 𝛽1= −2 → subir 1% el precio reduce ~2% la demanda.\n",
-    "\n",
-    "Se usan errores estándar robustos HC3 para heterocedasticidad.\n",
-    "\n",
-    "B) Agregación semanal\n",
-    "\n",
-    "    -Unidades: suma semanal\n",
-    "    -Precio: promedio semanal\n",
-    "\n",
-    "C) Filtros de calidad (semanal)\n",
-    "\n",
-    "    -Para asegurar señal suficiente:\n",
-    "        -MIN_WEEKS = 26\n",
-    "        -MIN_UNIQUE_PRICES_W = 3\n",
-    "\n",
-    "D) Modelo pooled (categoría × país)\n",
-    "\n",
-    "    Pooling a nivel dept_id × country × week.\n",
-    "\n",
-    "Resultado pooled del run:\n",
-    "\n",
-    "    -Elasticidad pooled: −4.325\n",
-    "    -p-value: ~8.9e−55\n",
-    "    -R²: 0.268\n",
-    "\n",
-    "Interpretación: en agregado, +1% precio → ~−4.3% unidades (con evidencia fuerte).\n",
-    "\n",
-    "E) Simulación de demanda con elasticidad\n",
-    "\n",
-    "    `Q_new = Q_base × (P_new / P_base)^ε`\n",
-    "\n",
-    "F) Profit\n",
-    "\n",
-    "    `Profit = Q × (P − C)`\n",
-    "\n",
-    "con 𝐶 costo unitario fijo por dept en esta versión."
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "id": "258aa708-26cf-44f4-abf0-64d3a4593bca",
-   "metadata": {},
-   "source": [
-    "### Resultados clave (del run)\n",
-    "Elasticidades por segmento (dept × país)\n",
-    "\n",
-    "Ejemplos:\n",
-    "\n",
-    "    -FOODS_3 (US): elasticidad ≈ −8.50 (muy sensible al precio)\n",
-    "    -Otros segmentos muestran elasticidades débiles o inestables (común en retail).\n",
-    "\n",
-    "Recomendaciones óptimas (costos fijos por dept)\n",
-    "\n",
-    "Costos unitarios usados:\n",
-    "\n",
-    "    -FOODS_3: 1.80\n",
-    "    -HOBBIES_1: 6.50\n",
-    "\n",
-    "Hallazgos:\n",
-    "\n",
-    "    -FOODS_3 (US): bajar precio 10% maximiza profit (gran mejora vs baseline).\n",
-    "    -FOODS_3 (MX/ES): subir precio 10% mejora profit por captura de margen.\n",
-    "    -HOBBIES_1: profit sigue negativo en todos los escenarios; subir precio reduce pérdidas pero no vuelve rentable.\n",
-    "\n",
-    "Conclusión de negocio:\n",
-    "FOODS tiene oportunidades claras de pricing diferenciado por mercado; HOBBIES sugiere problema estructural (costos/mix/demanda), no resoluble solo con precio."
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "id": "f972b41e-9c7e-4a0d-a6a1-18cc43f0ce08",
-   "metadata": {},
-   "source": [
-    "### Limitaciones y supuestos\n",
-    "\n",
-    "-Elasticidad no causal (datos observacionales; promos/competencia no modeladas por completo).\n",
-    "\n",
-    "-Supuesto de elasticidad constante.\n",
-    "\n",
-    "-Costos fijos por dept (simplificación).\n",
-    "\n",
-    "-No se modela explícitamente:\n",
-    "\n",
-    "    -promociones como driver separado\n",
-    "    -competencia\n",
-    "    -sustitución, inventario, marketing\n",
-    "    -En segmentos con poca variación de precio, la elasticidad puede ser inestable."
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "id": "49b6a4ba-d511-49bb-9eb9-9dbdf9af84c9",
-   "metadata": {},
-   "source": [
-    "### Limitaciones y supuestos\n",
-    "\n",
-    "    -Elasticidad no causal (datos observacionales; promos/competencia no modeladas por completo).\n",
-    "    -Supuesto de elasticidad constante.\n",
-    "    -Costos fijos por dept (simplificación).\n",
-    "    -No se modela explícitamente:\n",
-    "        -promociones como driver separado\n",
-    "        -competencia\n",
-    "        -sustitución, inventario, marketing\n",
-    "    -En segmentos con poca variación de precio, la elasticidad puede ser inestable."
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "id": "d5335555-11b9-4297-969d-8c2efef65ab0",
-   "metadata": {},
-   "source": [
-    "### Tech stack\n",
-    "\n",
-    "-Python 3.x (Anaconda)\n",
-    "\n",
-    "-Jupyter Notebook\n",
-    "\n",
-    "Librerías:\n",
-    "\n",
-    "-pandas, numpy\n",
-    "-statsmodels (OLS + HC3)\n",
-    "-matplotlib\n",
-    "\n",
-    "(Opcional futuro):\n",
-    "\n",
-    "-scikit-learn (Ridge/Lasso)"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "id": "a4a36e20-2c45-4060-a6d9-ad007b870cc8",
-   "metadata": {},
-   "source": [
-    "### Cómo correr el proyecto\n",
-    "\n",
-    "Descarga el dataset M5 de Kaggle y colócalo en data/.\n",
-    "\n",
-    "Crea/activa tu entorno (Anaconda recomendado).\n",
-    "\n",
-    "Ejecuta los notebooks en orden:\n",
-    "\n",
-    "    -01 → 02 → 03 → 04\n",
-    "\n",
-    "Estructura sugerida:\n",
-    "\n",
-    "project/\n",
-    "  data/\n",
-    "    calendar.csv\n",
-    "    sell_prices.csv\n",
-    "    sales_train_validation.csv\n",
-    "  notebooks/\n",
-    "    01_data_loading_and_cleaning.ipynb\n",
-    "    02_eda_sales_and_prices.ipynb\n",
-    "    03_price_elasticity_model.ipynb\n",
-    "    04_margin_optimization.ipynb\n",
-    "  README_ES.md\n"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "id": "9a71c5e0-7928-48a9-8509-57c8a924cddf",
-   "metadata": {},
-   "source": [
-    "### ¿Qué haría después?...\n",
-    "\n",
-    "1.-Elasticidad con enfoque causal / cuasi-causal\n",
-    "\n",
-    "    -Agregar variables de promos/holiday y controles; explorar métodos tipo diff-in-diff o instrumentos.\n",
-    "\n",
-    "2.- Modelos regularizados / jerárquicos\n",
-    "\n",
-    "    -Ridge/Lasso o partial pooling para estabilizar elasticidad a nivel SKU.\n",
-    "\n",
-    "3.-Elasticidad no constante\n",
-    "\n",
-    "    -Modelos por tramos (price bands) o splines.\n",
-    "\n",
-    "4.- Costos más realistas\n",
-    "\n",
-    "    -Costos por item, logística, constraints de margen; análisis de sensibilidad de costos.\n",
-    "\n",
-    "5.-Soporte a decisiones\n",
-    "\n",
-    "    -Dashboard ligero y un playbook de pricing por categoría/mercado."
-   ]
-  }
- ],
- "metadata": {
-  "kernelspec": {
-   "display_name": "anaconda-2025.12-py312",
-   "language": "python",
-   "name": "conda-env-anaconda-2025.12-py312-py"
-  },
-  "language_info": {
-   "codemirror_mode": {
-    "name": "ipython",
-    "version": 3
-   },
-   "file_extension": ".py",
-   "mimetype": "text/x-python",
-   "name": "python",
-   "nbconvert_exporter": "python",
-   "pygments_lexer": "ipython3",
-   "version": "3.12.12"
-  }
- },
- "nbformat": 4,
- "nbformat_minor": 5
-}
+### Elasticidad Precio–Demanda y Optimización de Margen (M5 Forecasting / Walmart)
+Resumen del proyecto
+
+Este proyecto desarrolla un flujo práctico de estrategia de precios usando el dataset M5 Forecasting (Walmart): estimamos elasticidad precio–demanda y, con esas elasticidades, 
+simulamos escenarios de precio para recomendar ajustes que maximicen profit por categoría y mercado.
+
+Idea central: la granularidad importa. A nivel SKU–tienda la elasticidad suele ser ruidosa e inestable; al agregar y hacer pooling se obtienen resultados más accionables.
+### Problema de negocio
+
+Un equipo de pricing quiere responder:
+
+1.-¿Qué tan sensible es la demanda a cambios de precio? (Elasticidad)
+
+2.-¿Conviene subir o bajar precios para maximizar profit?
+
+3.-¿La recomendación cambia por mercado y categoría?
+
+4.-¿El pricing puede “arreglar” un problema de rentabilidad o hay temas estructurales (costos/mix)?
+
+Entregables del proyecto:
+
+    -Elasticidades con inferencia estadística
+    -Simulación de unidades, revenue y profit por cambios de precio
+    -Recomendación accionable “subir / bajar / mantener” por segmento
+    ### Dataset
+
+Fuente: Kaggle_ M5 Forecasting dataset (Walmart).
+Archivos principales:
+
+    -sales_train_* (ventas diarias por item/tienda)
+    -sell_prices.csv (precios semanales por item/tienda/semana)
+    -calendar.csv (mapea d_# a fecha y wm_yr_wk)
+
+Enfoque multi-mercado: los stores/states se mapean a tres países (US/MX/ES) para simular un contexto de estrategia de precios internacional sin perder realismo.
+### Estructura del repositorio / notebooks
+
+01_data_loading_and_cleaning.ipynb
+
+-Carga, validación de tipos, joins con calendario y precios, y creación de tablas limpias cuidando performance.
+
+02_eda_sales_and_prices.ipynb
+
+-EDA de ventas y precios; comparación por país; validación de cobertura de precios.
+
+03_price_elasticity_model.ipynb
+
+-Modelo log-log (OLS), filtros de calidad, agregación semanal, pooling por segmento y errores robustos.
+
+04_margin_optimization.ipynb
+
+-Costos unitarios fijos por dept, baseline de profit, simulación de escenarios y tabla ejecutiva de recomendaciones.
+### Metodología
+1) Preparación de datos (Notebook 01)
+
+Se construye una tabla modelable con:
+
+    -item_id, store_id, dept_id, country
+    -date, wm_yr_wk
+    -units_sold
+    -sell_price
+
+Nota de performance: evitamos “melt” masivo (muy pesado en laptop) cuando no es necesario, para prevenir crashes del kernel.
+
+2) Exploración (Notebook 02)
+
+Validamos:
+
+    -cobertura de precios por semanas y mercados
+    -distribución de precios por país
+    -consistencia de joins sales ↔ calendar ↔ prices
+    -señales para justificar agregación semanal
+
+Resultado: el EDA motiva pasar de diario a semanal para estabilizar el modelado.
+
+3) Elasticidad (Notebook 03)
+
+Se intenta a nivel SKU–tienda y se observa inestabilidad; se pivotea a modelos agregados.
+
+Aprendizaje clave: a nivel SKU–tienda suele haber:
+
+    -ruido alto
+    -poca variación de precio
+    -efectos no observados (promos/estacionalidad)
+
+4) Optimización de margen (Notebook 04)
+
+Con elasticidades estimadas:
+
+    -simulamos cambios de precio
+    -calculamos unidades, revenue, profit esperados
+    -elegimos el precio que maximiza profit por segmento
+### Modelos matemáticos 
+A) Elasticidad log-log (OLS)
+
+Modelo estándar de elasticidad constante:
+
+`log(Q) = β₀ + β₁ log(P) + β₂ t + ε`
+
+
+    -Q: unidades vendidas
+    -P: precio
+    -𝑡:tendencia temporal (índice semanal)
+    -β1 : elasticidad precio–demanda
+
+        -Ejemplo: 𝛽1= −2 → subir 1% el precio reduce ~2% la demanda.
+
+Se usan errores estándar robustos HC3 para heterocedasticidad.
+
+B) Agregación semanal
+
+    -Unidades: suma semanal
+    -Precio: promedio semanal
+
+C) Filtros de calidad (semanal)
+
+    -Para asegurar señal suficiente:
+        -MIN_WEEKS = 26
+        -MIN_UNIQUE_PRICES_W = 3
+
+D) Modelo pooled (categoría × país)
+
+    Pooling a nivel dept_id × country × week.
+
+Resultado pooled del run:
+
+    -Elasticidad pooled: −4.325
+    -p-value: ~8.9e−55
+    -R²: 0.268
+
+Interpretación: en agregado, +1% precio → ~−4.3% unidades (con evidencia fuerte).
+
+E) Simulación de demanda con elasticidad
+
+    `Q_new = Q_base × (P_new / P_base)^ε`
+
+F) Profit
+
+    `Profit = Q × (P − C)`
+
+con 𝐶 costo unitario fijo por dept en esta versión.
+
+### Resultados clave (del run)
+Elasticidades por segmento (dept × país)
+
+Ejemplos:
+
+    -FOODS_3 (US): elasticidad ≈ −8.50 (muy sensible al precio)
+    -Otros segmentos muestran elasticidades débiles o inestables (común en retail).
+
+Recomendaciones óptimas (costos fijos por dept)
+
+Costos unitarios usados:
+
+    -FOODS_3: 1.80
+    -HOBBIES_1: 6.50
+
+Hallazgos:
+
+    -FOODS_3 (US): bajar precio 10% maximiza profit (gran mejora vs baseline).
+    -FOODS_3 (MX/ES): subir precio 10% mejora profit por captura de margen.
+    -HOBBIES_1: profit sigue negativo en todos los escenarios; subir precio reduce pérdidas pero no vuelve rentable.
+
+Conclusión de negocio:
+FOODS tiene oportunidades claras de pricing diferenciado por mercado; HOBBIES sugiere problema estructural (costos/mix/demanda), no resoluble solo con precio.
+
+### Limitaciones y supuestos
+
+-Elasticidad no causal (datos observacionales; promos/competencia no modeladas por completo).
+
+-Supuesto de elasticidad constante.
+
+-Costos fijos por dept (simplificación).
+
+-No se modela explícitamente:
+
+    -promociones como driver separado
+    -competencia
+    -sustitución, inventario, marketing
+    -En segmentos con poca variación de precio, la elasticidad puede ser inestable.
+
+### Limitaciones y supuestos
+
+    -Elasticidad no causal (datos observacionales; promos/competencia no modeladas por completo).
+    -Supuesto de elasticidad constante.
+    -Costos fijos por dept (simplificación).
+    -No se modela explícitamente:
+        -promociones como driver separado
+        -competencia
+        -sustitución, inventario, marketing
+    -En segmentos con poca variación de precio, la elasticidad puede ser inestable.
+
+### Tech stack
+
+-Python 3.x (Anaconda)
+
+-Jupyter Notebook
+
+Librerías:
+
+-pandas, numpy
+-statsmodels (OLS + HC3)
+-matplotlib
+
+(Opcional futuro):
+
+-scikit-learn (Ridge/Lasso)
+
+### Cómo correr el proyecto
+
+Descarga el dataset M5 de Kaggle y colócalo en data/.
+
+Crea/activa tu entorno (Anaconda recomendado).
+
+Ejecuta los notebooks en orden:
+
+    -01 → 02 → 03 → 04
+
+Estructura sugerida:
+
+project/
+  data/
+    calendar.csv
+    sell_prices.csv
+    sales_train_validation.csv
+  notebooks/
+    01_data_loading_and_cleaning.ipynb
+    02_eda_sales_and_prices.ipynb
+    03_price_elasticity_model.ipynb
+    04_margin_optimization.ipynb
+### ¿Qué haría después?...
+
+1.-Elasticidad con enfoque causal / cuasi-causal
+
+    -Agregar variables de promos/holiday y controles; explorar métodos tipo diff-in-diff o instrumentos.
+
+2.- Modelos regularizados / jerárquicos
+
+    -Ridge/Lasso o partial pooling para estabilizar elasticidad a nivel SKU.
+
+3.-Elasticidad no constante
+
+    -Modelos por tramos (price bands) o splines.
+
+4.- Costos más realistas
+
+    -Costos por item, logística, constraints de margen; análisis de sensibilidad de costos.
+
+5.-Soporte a decisiones
+
+    -Dashboard ligero y un playbook de pricing por categoría/mercado.
