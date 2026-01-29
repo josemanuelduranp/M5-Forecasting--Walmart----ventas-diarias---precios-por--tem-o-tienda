@@ -1,4 +1,4 @@
-Elasticidad Precio–Demanda y Optimización de Margen (M5 Forecasting / Walmart)
+### Elasticidad Precio–Demanda y Optimización de Margen (M5 Forecasting / Walmart)
 
 Resumen del proyecto
 
