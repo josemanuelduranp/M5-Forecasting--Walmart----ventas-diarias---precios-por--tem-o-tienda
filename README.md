@@ -1,4 +1,5 @@
 Elasticidad Precio–Demanda y Optimización de Margen (M5 Forecasting / Walmart)
+
 Resumen del proyecto
 
 Este proyecto desarrolla un flujo práctico de estrategia de precios usando el dataset M5 Forecasting (Walmart): estimamos elasticidad precio–demanda y, con esas elasticidades, simulamos escenarios de precio para recomendar ajustes que maximicen profit por categoría y mercado.
