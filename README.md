@@ -22,15 +22,19 @@ Entregables del proyecto:
 -Elasticidades con inferencia estadística
 -Simulación de unidades, revenue y profit por cambios de precio
 -Recomendación accionable “subir / bajar / mantener” por segmento
+
 ### Dataset
+
 Fuente: Kaggle_ M5 Forecasting dataset (Walmart). Archivos principales:
 
 -sales_train_* (ventas diarias por item/tienda)
 -sell_prices.csv (precios semanales por item/tienda/semana)
 -calendar.csv (mapea d_# a fecha y wm_yr_wk)
+
 Enfoque multi-mercado: los stores/states se mapean a tres países (US/MX/ES) para simular un contexto de estrategia de precios internacional sin perder realismo.
 
 Estructura del repositorio / notebooks
+
 01_data_loading_and_cleaning.ipynb
 
 -Carga, validación de tipos, joins con calendario y precios, y creación de tablas limpias cuidando performance.
@@ -48,25 +52,31 @@ Estructura del repositorio / notebooks
 -Costos unitarios fijos por dept, baseline de profit, simulación de escenarios y tabla ejecutiva de recomendaciones.
 
 Metodología
+
 Preparación de datos (Notebook 01)
+
 Se construye una tabla modelable con:
 
 -item_id, store_id, dept_id, country
 -date, wm_yr_wk
 -units_sold
 -sell_price
+
 Nota de performance: evitamos “melt” masivo (muy pesado en laptop) cuando no es necesario, para prevenir crashes del kernel.
 
 Exploración (Notebook 02)
+
 Validamos:
 
 -cobertura de precios por semanas y mercados
 -distribución de precios por país
 -consistencia de joins sales ↔ calendar ↔ prices
 -señales para justificar agregación semanal
+
 Resultado: el EDA motiva pasar de diario a semanal para estabilizar el modelado.
 
 Elasticidad (Notebook 03)
+
 Se intenta a nivel SKU–tienda y se observa inestabilidad; se pivotea a modelos agregados.
 
 Aprendizaje clave: a nivel SKU–tienda suele haber:
@@ -74,7 +84,9 @@ Aprendizaje clave: a nivel SKU–tienda suele haber:
 -ruido alto
 -poca variación de precio
 -efectos no observados (promos/estacionalidad)
+
 Optimización de margen (Notebook 04)
+
 Con elasticidades estimadas:
 
 -simulamos cambios de precio
@@ -93,17 +105,20 @@ log(Q) = β₀ + β₁ log(P) + β₂ t + ε
 -β1 : elasticidad precio–demanda
 
     -Ejemplo: 𝛽1= −2 → subir 1% el precio reduce ~2% la demanda.
+
 Se usan errores estándar robustos HC3 para heterocedasticidad.
 
 B) Agregación semanal
 
 -Unidades: suma semanal
 -Precio: promedio semanal
+
 C) Filtros de calidad (semanal)
 
 -Para asegurar señal suficiente:
     -MIN_WEEKS = 26
     -MIN_UNIQUE_PRICES_W = 3
+
 D) Modelo pooled (categoría × país)
 
 Pooling a nivel dept_id × country × week.
@@ -112,29 +127,34 @@ Resultado pooled del run:
 -Elasticidad pooled: −4.325
 -p-value: ~8.9e−55
 -R²: 0.268
+
 Interpretación: en agregado, +1% precio → ~−4.3% unidades (con evidencia fuerte).
 
 E) Simulación de demanda con elasticidad
 
 `Q_new = Q_base × (P_new / P_base)^ε`
+
 F) Profit
 
 `Profit = Q × (P − C)`
 con 𝐶 costo unitario fijo por dept en esta versión.
 
 Resultados clave (del run)
+
 Elasticidades por segmento (dept × país)
 
 Ejemplos:
 
 -FOODS_3 (US): elasticidad ≈ −8.50 (muy sensible al precio)
 -Otros segmentos muestran elasticidades débiles o inestables (común en retail).
+
 Recomendaciones óptimas (costos fijos por dept)
 
 Costos unitarios usados:
 
 -FOODS_3: 1.80
 -HOBBIES_1: 6.50
+
 Hallazgos:
 
 -FOODS_3 (US): bajar precio 10% maximiza profit (gran mejora vs baseline).
@@ -155,7 +175,9 @@ Limitaciones y supuestos
 -competencia
 -sustitución, inventario, marketing
 -En segmentos con poca variación de precio, la elasticidad puede ser inestable.
+
 Limitaciones y supuestos
+
 -Elasticidad no causal (datos observacionales; promos/competencia no modeladas por completo).
 -Supuesto de elasticidad constante.
 -Costos fijos por dept (simplificación).
@@ -164,6 +186,7 @@ Limitaciones y supuestos
     -competencia
     -sustitución, inventario, marketing
 -En segmentos con poca variación de precio, la elasticidad puede ser inestable.
+
 Tech stack
 -Python 3.x (Anaconda)
 
